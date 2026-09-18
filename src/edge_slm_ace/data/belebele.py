@@ -6,7 +6,7 @@ correct option, translated. That is what makes an en/ne comparison paired rather
 than merely matched, so a difference between the two can be tested with McNemar
 on the same items.
 
-Three properties of the raw files drive the design here, all verified against
+Four properties of the raw files drive the design here, all verified against
 `facebook/belebele` rather than assumed:
 
 1. **The language files are not in the same row order.** They contain the same
@@ -23,6 +23,12 @@ Three properties of the raw files drive the design here, all verified against
    adaptation sees without changing what is scored -- which is the arm
    asymmetry the whole prompt layer exists to prevent. The residual position
    bias is a limitation to state, not something the loader can correct.
+4. **The 900 questions cover only 488 passages**, 412 of which carry two. The
+   split unit is therefore the passage, not the question: a question-level
+   split adapts the playbook on a passage and then scores it on the sibling
+   question about the same 79 words. That leak inflates the adapted arm and
+   only the adapted arm -- exactly the direction that would manufacture the
+   result this study is trying to test. See `passage_split`.
 """
 
 import hashlib
@@ -31,7 +37,7 @@ import random
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
 
-from edge_slm_ace.utils.config import ADAPTATION_SIZE, REPO_ROOT
+from edge_slm_ace.utils.config import BELEBELE_ADAPTATION_PASSAGES, REPO_ROOT
 
 # Short language code -> the FLORES-200 code Belebele files are named by.
 BELEBELE_LANGUAGES: Dict[str, str] = {
@@ -102,8 +108,84 @@ def item_id(record: Dict) -> str:
     Returns:
         An id of the form "bel-<10 hex chars>-q<question_number>".
     """
+    return f"{passage_id(record)}-q{record['question_number']}"
+
+
+def passage_id(record: Dict) -> str:
+    """
+    Identifier for the passage a question is asked about.
+
+    412 of Belebele's 488 passages carry two questions. Splitting by question
+    therefore puts a passage's two questions on opposite sides of the split
+    roughly half the time -- the playbook adapts on a passage, and is then
+    evaluated on its sibling question about the same 79 words. That is a leak
+    that inflates the adapted arm and only the adapted arm, which is the
+    direction that would manufacture our headline result.
+
+    Args:
+        record: A raw Belebele record.
+
+    Returns:
+        An id of the form "bel-<10 hex chars>".
+    """
     digest = hashlib.blake2s(str(record["link"]).encode("utf-8"), digest_size=5).hexdigest()
-    return f"bel-{digest}-q{record['question_number']}"
+    return f"bel-{digest}"
+
+
+def passage_of(item: str) -> str:
+    """
+    The passage id an item id belongs to.
+
+    Args:
+        item: An id from `item_id`, "bel-<digest>-q<n>".
+
+    Returns:
+        The "bel-<digest>" prefix.
+
+    Raises:
+        ValueError: If the id is not in that form. It raises rather than
+            returning the input, because a silently passed-through id would
+            make every item look like its own passage -- and the
+            passage-overlap assertion would then pass on a split that leaks.
+    """
+    head, sep, tail = str(item).rpartition("-q")
+    if not sep or not head or not tail.isdigit():
+        raise ValueError(
+            f"{item!r} is not a Belebele item id of the form 'bel-<digest>-q<n>', "
+            f"so its passage cannot be determined."
+        )
+    return head
+
+
+def assert_zero_passage_overlap(adaptation_ids: Sequence[str], eval_ids: Sequence[str]) -> None:
+    """
+    Verify no passage appears on both sides of a split.
+
+    Args:
+        adaptation_ids: Ids the playbook is built on.
+        eval_ids: Ids the study reports over.
+
+    Raises:
+        ValueError: If any passage is shared, naming how many and giving
+            examples. Also if the two sides share an item id outright, which
+            would be a stronger version of the same failure.
+    """
+    shared_items = set(adaptation_ids) & set(eval_ids)
+    if shared_items:
+        raise ValueError(
+            f"{len(shared_items)} item(s) are in both splits, " f"e.g. {sorted(shared_items)[:3]}"
+        )
+
+    adaptation_passages = {passage_of(i) for i in adaptation_ids}
+    eval_passages = {passage_of(i) for i in eval_ids}
+    shared = adaptation_passages & eval_passages
+    if shared:
+        raise ValueError(
+            f"{len(shared)} passage(s) appear in both the adaptation and the "
+            f"evaluation split, e.g. {sorted(shared)[:3]}. The playbook would "
+            f"be adapted on a passage and then scored on another question "
+            f"about it."
+        )
 
 
 def _normalize(record: Dict, language: str, domain: str) -> Dict:
@@ -172,63 +254,85 @@ def load_belebele(
     return sorted(examples, key=lambda e: e["id"])
 
 
-def parallel_split(
+def passage_split(
     item_ids: Sequence[str],
-    adaptation_size: int,
+    adaptation_passages: int,
     seed: int,
 ) -> Tuple[List[str], List[str]]:
     """
-    Split ids into an adaptation set and a frozen evaluation set.
+    Split ids into an adaptation set and a frozen evaluation set, by passage.
+
+    The unit of randomisation is the passage, not the question, because a
+    passage is the unit of leakage: 412 of 488 passages carry two questions,
+    and a question-level split routinely hands the playbook one of a pair and
+    then scores it on the other.
 
     Deterministic in `(seed, ids)` and independent of the order ids arrive in,
     so every language and every arm gets the identical split. If the split were
     derived from row order, English and Nepali would adapt on different
-    questions and the paired comparison would be meaningless.
+    passages and the paired comparison would be meaningless.
 
     Args:
         item_ids: All ids in the language.
-        adaptation_size: How many to reserve for building the playbook.
+        adaptation_passages: How many passages to reserve for the playbook.
         seed: Run seed.
 
     Returns:
-        (adaptation_ids, eval_ids), both sorted.
+        (adaptation_ids, eval_ids), both sorted, passage-disjoint. The item
+        counts are not exactly proportional to the passage counts, because 76
+        passages carry one question and 412 carry two.
 
     Raises:
-        ValueError: If the adaptation set would take everything.
+        ValueError: If the adaptation set would take every passage or none.
     """
-    unique = sorted(set(item_ids))
-    if not 0 < adaptation_size < len(unique):
-        raise ValueError(f"adaptation_size must be in (0, {len(unique)}); got {adaptation_size}")
+    by_passage: Dict[str, List[str]] = {}
+    for item in sorted(set(item_ids)):
+        by_passage.setdefault(passage_of(item), []).append(item)
 
-    shuffled = list(unique)
+    passages = sorted(by_passage)
+    if not 0 < adaptation_passages < len(passages):
+        raise ValueError(
+            f"adaptation_passages must be in (0, {len(passages)}); got {adaptation_passages}"
+        )
+
+    shuffled = list(passages)
     random.Random(seed).shuffle(shuffled)
-    return sorted(shuffled[:adaptation_size]), sorted(shuffled[adaptation_size:])
+    chosen = set(shuffled[:adaptation_passages])
+
+    adaptation = sorted(i for p in chosen for i in by_passage[p])
+    evaluation = sorted(i for p in passages if p not in chosen for i in by_passage[p])
+
+    # Belt and braces: the construction above cannot leak, so this catches a
+    # future edit to it rather than a bug in it.
+    assert_zero_passage_overlap(adaptation, evaluation)
+    return adaptation, evaluation
 
 
 def study_split(
     item_ids: Sequence[str],
     seed: int,
-    adaptation_size: Optional[int] = None,
+    adaptation_passages: Optional[int] = None,
 ) -> Tuple[List[str], List[str]]:
     """
     The study's one split of Belebele into adaptation and evaluation.
 
-    Every entrypoint must call this rather than `parallel_split` directly.
-    Screening and the grid each chose their own size -- 400 and 200 -- and since
-    the split is one shuffle sliced at that index, the 200 items between them
-    were screened on *and* scored on. Model selection was therefore made on
-    items the study reports over.
+    Every entrypoint must call this rather than `passage_split` directly.
+    Screening and the grid each chose their own size -- 400 and 200 -- and
+    since the split was one shuffle sliced at that index, the 200 items between
+    them were screened on *and* scored on. Model selection was therefore made
+    on items the study reports over. One function, one split, no second
+    constant to disagree with the first.
 
     Args:
         item_ids: All ids in the language.
         seed: Run seed.
-        adaptation_size: Override, for tests and debugging only. A run that
+        adaptation_passages: Override, for tests and debugging only. A run that
             passes one is no longer on the study's split.
 
     Returns:
-        (adaptation_ids, eval_ids), both sorted and disjoint.
+        (adaptation_ids, eval_ids), both sorted, disjoint, and passage-disjoint.
     """
-    return parallel_split(item_ids, adaptation_size or ADAPTATION_SIZE, seed)
+    return passage_split(item_ids, adaptation_passages or BELEBELE_ADAPTATION_PASSAGES, seed)
 
 
 # lm-evaluation-harness task names for the language variants we use.
@@ -255,7 +359,7 @@ def harness_indices(
 
     Args:
         language: Short code ("en", "ne") or FLORES code.
-        item_ids: Ids to evaluate, from `parallel_split`.
+        item_ids: Ids to evaluate, from `study_split`.
         path: Override the file location.
 
     Returns:

@@ -110,7 +110,7 @@ def run_frozen_eval(
     Args:
         model_id: HuggingFace model id.
         language: "en" or "ne".
-        item_ids: The evaluation split, from `parallel_split`. Converted to this
+        item_ids: The evaluation split, from `study_split`. Converted to this
             language's document positions -- the two language files are in
             different row orders, so a shared index list would evaluate a
             different question set per language.

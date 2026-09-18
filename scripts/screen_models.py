@@ -4,14 +4,19 @@
 A model that cannot read Nepali at all cannot show a context-adaptation effect
 on Nepali, and including it would dilute every aggregate with noise centred on
 chance. The rule is pre-registered and stated on the interval, not the point
-estimate: Belebele is four-option, so chance is 25%. Screening runs at n=400 and
-requires the Wilson lower bound to clear 30%.
+estimate: Belebele is four-option, so chance is 25%, and a model enters the
+grid only if the Wilson lower bound clears 30%.
+
+Screening runs on the *whole* adaptation split and carries no sample size of
+its own. It used to take `--n` from a `SCREENING_N` constant while `run_arm`
+sliced the same shuffle at a different index, so the items between the two were
+screened on and scored on. One split, one size, nothing left to disagree.
 
 Screening draws from the adaptation split and nothing else, because choosing
 which models enter the study is a decision made on the outcome. That is checked
-here, not merely asserted in prose: this script and `run_arm` split at the same
-`ADAPTATION_SIZE`, and the overlap with the evaluation split is verified to be
-empty before any model is loaded.
+here rather than merely asserted in prose: the overlap with the evaluation
+split is verified empty, and on Belebele the *passage* overlap is verified
+empty too, before any model is loaded.
 
 Screened-out models go in the appendix, not the bin: "current small models
 cannot read Nepali" is itself a finding, and it is the one the kill criteria
@@ -27,16 +32,15 @@ import json
 import sys
 from pathlib import Path
 
-from edge_slm_ace.data import load_belebele, study_split
+from edge_slm_ace.data import assert_zero_passage_overlap, load_belebele, study_split
 from edge_slm_ace.eval.stats import summarize_accuracy
 from edge_slm_ace.harness import per_item_correctness, run_frozen_eval
 from edge_slm_ace.utils import (
-    ADAPTATION_SIZE,
+    BELEBELE_ADAPTATION_PASSAGES,
     CHANCE_FLOOR,
     DEFAULT_SEED,
     MODELS,
     SCREENING_FLOOR,
-    SCREENING_N,
     capture_environment,
     resolve_model,
     screening_verdict,
@@ -55,7 +59,13 @@ def parse_args(argv=None) -> argparse.Namespace:
     p.add_argument("--device", default=None, choices=["cpu", "cuda", "mps"])
     p.add_argument("--batch-size", type=int, default=8)
     p.add_argument("--dtype", default=None)
-    p.add_argument("--n", type=int, default=SCREENING_N, help=f"Items (default: {SCREENING_N})")
+    p.add_argument(
+        "--limit",
+        type=int,
+        default=None,
+        help="Debug only: screen on the first N adaptation items instead of all "
+        "of them. A run that passes this is not the pre-registered screen.",
+    )
     p.add_argument(
         "--no-chat-template",
         action="store_true",
@@ -75,15 +85,7 @@ def main(argv=None) -> int:
     # adaptation side only, so the evaluation split stays untouched by a
     # decision made before the study starts.
     adapt_ids, eval_ids = study_split([e["id"] for e in examples], args.seed)
-    if args.n > len(adapt_ids):
-        print(
-            f"Error: --n {args.n} exceeds the adaptation split ({len(adapt_ids)} "
-            f"items). Screening beyond it would score items the study reports "
-            f"on. Raise ADAPTATION_SIZE instead.",
-            file=sys.stderr,
-        )
-        return 1
-    screen_ids = adapt_ids[: args.n]
+    screen_ids = adapt_ids[: args.limit] if args.limit else adapt_ids
 
     leaked = set(screen_ids) & set(eval_ids)
     if leaked:
@@ -94,11 +96,24 @@ def main(argv=None) -> int:
         )
         return 1
 
+    # Belebele's real leak is one level up from the item: a passage shared
+    # across the split means screening saw the passage an evaluation question
+    # is about. `--limit` can only shrink the adaptation side, so this holds
+    # under it too.
+    try:
+        assert_zero_passage_overlap(screen_ids, eval_ids)
+    except ValueError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+
     out_dir = args.results_root / "screening"
     out_dir.mkdir(parents=True, exist_ok=True)
     rows = []
 
-    print(f"Screening on Belebele {args.language}, n={len(screen_ids)}")
+    print(
+        f"Screening on Belebele {args.language}, n={len(screen_ids)} "
+        f"({BELEBELE_ADAPTATION_PASSAGES} passages)"
+    )
     print(f"Rule: Wilson lower bound > {SCREENING_FLOOR:.0%} (chance = {CHANCE_FLOOR:.0%})\n")
 
     for key in keys:
@@ -161,7 +176,7 @@ def main(argv=None) -> int:
             "floor": SCREENING_FLOOR,
             "statistic": "wilson_ci_low",
             "pre_registered": True,
-            "adaptation_size": ADAPTATION_SIZE,
+            "adaptation_passages": BELEBELE_ADAPTATION_PASSAGES,
             "drawn_from": "adaptation_split",
         },
         "models": rows,
