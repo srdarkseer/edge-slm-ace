@@ -2,6 +2,7 @@
 #
 #   make install    development install with all extras
 #   make data       fetch and verify the Belebele and Global-MMLU language files
+#   make splits     verify the committed frozen split manifests
 #   make test       run the test suite
 #   make check      test + lint + format check (what CI runs)
 #   make screen     Nepali screening run; gates entry to the main grid
@@ -21,7 +22,8 @@ RESULTS ?= results
 DEVICE  ?= cuda
 PY      ?= python
 
-.PHONY: install data test check lint format screen grid report mutants clean
+.PHONY: install data splits splits-REGENERATE test check lint format screen grid \
+	report mutants clean
 
 install:
 	$(PY) -m pip install -e ".[dev,retrieval,report]"
@@ -29,6 +31,17 @@ install:
 data:
 	$(PY) -m scripts.fetch_belebele
 	$(PY) -m scripts.fetch_global_mmlu
+
+# The splits are committed. This only verifies them: every id list still hashes
+# to its recorded checksum, and the corpus on disk is the one the ids were
+# drawn from.
+splits:
+	$(PY) -m scripts.freeze_splits --check
+
+# Rewriting the splits invalidates the pre-registration and every result
+# already collected against them. Named to be hard to type by accident.
+splits-REGENERATE:
+	$(PY) -m scripts.freeze_splits --force
 
 test:
 	$(PY) -m pytest tests/ -v
@@ -40,7 +53,7 @@ lint:
 format:
 	$(PY) -m black --target-version py311 src/ scripts/ tests/
 
-check: test lint
+check: test lint splits
 	$(PY) -m black --check --target-version py311 src/ scripts/ tests/
 
 # Pre-registered gate: a model enters the grid only if the lower bound of its
