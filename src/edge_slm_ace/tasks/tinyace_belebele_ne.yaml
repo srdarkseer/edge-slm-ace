@@ -1,0 +1,3 @@
+include: _tinyace_belebele_template.yaml
+task: tinyace_belebele_ne
+custom_dataset: !function utils.belebele_ne

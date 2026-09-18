@@ -52,6 +52,13 @@ Issues = "https://github.com/SirAlchemist1/edge-slm-ace/issues"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+# The task YAMLs are code, not data: they are what lm-eval scores, and
+# `TaskManager(include_path=...)` reads them off the filesystem next to
+# `tasks/utils.py`. Without this they are dropped from a non-editable install
+# and every task fails to register.
+[tool.setuptools.package-data]
+"edge_slm_ace.tasks" = ["*.yaml"]
+
 [tool.black]
 line-length = 100
 
