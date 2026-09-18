@@ -1,7 +1,7 @@
 # TinyACE-Nepali — common tasks.
 #
 #   make install    development install with all extras
-#   make data       fetch and verify the Belebele language files
+#   make data       fetch and verify the Belebele and Global-MMLU language files
 #   make test       run the test suite
 #   make check      test + lint + format check (what CI runs)
 #   make screen     Nepali screening run; gates entry to the main grid
@@ -28,6 +28,7 @@ install:
 
 data:
 	$(PY) -m scripts.fetch_belebele
+	$(PY) -m scripts.fetch_global_mmlu
 
 test:
 	$(PY) -m pytest tests/ -v

@@ -232,6 +232,12 @@ predictions.jsonl
 !data/**/*.jsonl
 !data/**/*.json
 
+# ...except Global-MMLU, which is ~31 MB of JSONL and refetchable in seconds
+# (`make data`). What makes the study reproducible is not the corpus bytes in
+# git but the frozen split manifests in data/splits/, each pinned to the
+# source SHA256. Those are small, and they are tracked below.
+data/tasks/global_mmlu/
+
 # Virtual environments
 .venv/
 venv/
