@@ -150,7 +150,11 @@ class TestFallbackMessage:
         that installs.
         """
         import re
-        import tomllib
+
+        try:
+            import tomllib
+        except ModuleNotFoundError:  # Python 3.10: tomllib arrived in 3.11
+            import tomli as tomllib
 
         source = (REPO_ROOT / "src/edge_slm_ace/memory/relevance.py").read_text(encoding="utf-8")
         pyproject = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
