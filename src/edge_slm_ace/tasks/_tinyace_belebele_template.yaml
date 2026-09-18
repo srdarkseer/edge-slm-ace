@@ -1,0 +1,20 @@
+# Shared configuration for this project's Belebele tasks.
+#
+# Same rationale as the Global-MMLU template: the dataset comes from our own
+# loader, and selection is by frozen-split id rather than by document position.
+#
+# doc_to_text reproduces upstream `belebele/_default_template_yaml` exactly,
+# with the option fields renamed to the option_a..option_d shape this project
+# uses for both tasks. assert_matches_harness() checks it against the installed
+# copy so an upstream edit fails loudly instead of silently reshaping prompts.
+output_type: multiple_choice
+test_split: test
+doc_to_text: "P: {{context}}\nQ: {{question.strip()}}\nA: {{option_a}}\nB: {{option_b}}\nC: {{option_c}}\nD: {{option_d}}\nAnswer:"
+doc_to_choice: ["A", "B", "C", "D"]
+doc_to_target: answer
+metric_list:
+  - metric: acc
+    aggregation: mean
+    higher_is_better: true
+metadata:
+  version: 1.0

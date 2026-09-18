@@ -36,6 +36,11 @@ dev = [
     "pytest-cov>=4.1.0",
     "black>=23.0.0",
     "flake8>=6.1.0",
+    # `tomllib` is stdlib only from 3.11, and this project supports 3.10. One
+    # test reads pyproject.toml to check that an error message names an extra
+    # that actually exists; without this it raised ModuleNotFoundError on the
+    # 3.10 leg, so it had never once run there.
+    "tomli>=2.0.0; python_version < '3.11'",
 ]
 
 # This is a research repository, not a library: the Belebele files in
@@ -51,6 +56,13 @@ Issues = "https://github.com/SirAlchemist1/edge-slm-ace/issues"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+# The task YAMLs are code, not data: they are what lm-eval scores, and
+# `TaskManager(include_path=...)` reads them off the filesystem next to
+# `tasks/utils.py`. Without this they are dropped from a non-editable install
+# and every task fails to register.
+[tool.setuptools.package-data]
+"edge_slm_ace.tasks" = ["*.yaml"]
 
 [tool.black]
 line-length = 100

@@ -1,0 +1,3 @@
+include: _tinyace_global_mmlu_template.yaml
+task: tinyace_global_mmlu_ne
+custom_dataset: !function utils.global_mmlu_ne

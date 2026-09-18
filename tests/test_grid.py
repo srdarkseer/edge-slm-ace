@@ -12,7 +12,12 @@ import json
 from edge_slm_ace.memory.playbook import Playbook
 from edge_slm_ace.adapt import frozen_lessons
 from edge_slm_ace.reporting import get_arm
-from edge_slm_ace.utils import CHANCE_FLOOR, SCREENING_FLOOR, SCREENING_N, screening_verdict
+from edge_slm_ace.utils import (
+    BELEBELE_ADAPTATION_PASSAGES,
+    CHANCE_FLOOR,
+    SCREENING_FLOOR,
+    screening_verdict,
+)
 from scripts.run_grid import (
     GRID,
     cell_dir,
@@ -127,12 +132,20 @@ class TestScreeningRule:
         assert screening_verdict(0.30) is False
         assert screening_verdict(0.28) is False
 
-    def test_screening_n_is_large_enough_to_resolve_the_floor(self):
-        """The interval at the floor must not straddle chance."""
+    def test_the_belebele_screen_can_still_resolve_the_floor(self):
+        """
+        The passage-level split costs sample size: ~185 adaptation items, not
+        400. A 38% model must still be separable from chance at that n, or the
+        gate cannot do its job on the negative-control task.
+        """
         from edge_slm_ace.eval.stats import wilson_interval
 
-        low, _ = wilson_interval(int(0.35 * SCREENING_N), SCREENING_N)
-        assert low > CHANCE_FLOOR, "a 35% model must be distinguishable from chance"
+        n = 185
+        low, _ = wilson_interval(int(0.38 * n), n)
+        assert low > CHANCE_FLOOR, "a 38% model must be distinguishable from chance"
+
+    def test_the_passage_budget_leaves_most_of_belebele_for_evaluation(self):
+        assert 0 < BELEBELE_ADAPTATION_PASSAGES < 488 / 2
 
 
 class TestLanguageOrdering:

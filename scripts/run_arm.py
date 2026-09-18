@@ -47,11 +47,12 @@ def parse_args(argv=None) -> argparse.Namespace:
     p.add_argument("--output-dir", required=True, type=Path)
     p.add_argument("--seed", type=int, default=DEFAULT_SEED)
     p.add_argument(
-        "--adaptation-size",
+        "--adaptation-passages",
         type=int,
         default=None,
-        help="Override the study's adaptation split size. Debugging only: a "
-        "run that sets it is not on the split screening was gated on.",
+        help="Override how many Belebele passages the adaptation split takes. "
+        "Debugging only: a run that sets it is not on the split screening was "
+        "gated on.",
     )
     p.add_argument("--device", default=None, choices=["cpu", "cuda", "mps"])
     p.add_argument("--batch-size", type=int, default=8)
@@ -168,7 +169,9 @@ def main(argv=None, lm=None) -> int:
     examples = load_belebele(args.language, domain=domain)
     by_id = {e["id"]: e for e in examples}
     adapt_ids, eval_ids = study_split(
-        [e["id"] for e in examples], seed=args.seed, adaptation_size=args.adaptation_size
+        [e["id"] for e in examples],
+        seed=args.seed,
+        adaptation_passages=args.adaptation_passages,
     )
     if args.limit:
         adapt_ids, eval_ids = adapt_ids[: args.limit], eval_ids[: args.limit]

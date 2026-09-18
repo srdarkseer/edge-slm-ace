@@ -8,13 +8,13 @@ dependency of anything that wanted the model registry.
 """
 
 from edge_slm_ace.utils.config import (
-    ADAPTATION_SIZE,
+    BELEBELE_ADAPTATION_PASSAGES,
     CHANCE_FLOOR,
     DATA_ROOT_ENV,
+    GLOBAL_MMLU_ADAPTATION_SIZE,
     MODELS,
     REPO_ROOT,
     SCREENING_FLOOR,
-    SCREENING_N,
     ModelSpec,
     model_keys,
     resolve_model,
@@ -23,14 +23,14 @@ from edge_slm_ace.utils.config import (
 from edge_slm_ace.utils.repro import DEFAULT_SEED, capture_environment, set_seed
 
 __all__ = [
-    "ADAPTATION_SIZE",
+    "BELEBELE_ADAPTATION_PASSAGES",
     "CHANCE_FLOOR",
     "DATA_ROOT_ENV",
     "DEFAULT_SEED",
+    "GLOBAL_MMLU_ADAPTATION_SIZE",
     "MODELS",
     "REPO_ROOT",
     "SCREENING_FLOOR",
-    "SCREENING_N",
     "ModelSpec",
     "capture_environment",
     "model_keys",

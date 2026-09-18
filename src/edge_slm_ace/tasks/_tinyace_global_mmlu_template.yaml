@@ -1,0 +1,25 @@
+# Shared configuration for this project's Global-MMLU tasks.
+#
+# `custom_dataset` rather than `dataset_path`: the harness is handed the output
+# of the same loader the frozen splits were drawn with, so it cannot score one
+# copy of the corpus while the manifests index another. It also means the task
+# needs no network and no working directory.
+#
+# lm-eval ships `global_mmlu_<lang>` tasks, but they read Global-MMLU *Lite*
+# and there is no `global_mmlu_ne` among them at all. These are not a
+# re-skinning of an upstream task; Nepali has none.
+#
+# doc_to_text matches the upstream Global-MMLU template byte for byte so that
+# our numbers stay comparable to published ones. Keep it in sync via
+# assert_matches_harness().
+output_type: multiple_choice
+test_split: test
+doc_to_text: "{{question.strip()}}\nA. {{option_a}}\nB. {{option_b}}\nC. {{option_c}}\nD. {{option_d}}\nAnswer:"
+doc_to_choice: ["A", "B", "C", "D"]
+doc_to_target: answer
+metric_list:
+  - metric: acc
+    aggregation: mean
+    higher_is_better: true
+metadata:
+  version: 1.0

@@ -73,31 +73,38 @@ MODELS: Dict[str, ModelSpec] = {
     ]
 }
 
-# How many of the 900 Belebele items the playbook is built on. The rest are the
-# frozen evaluation split.
+# How much of each task the playbook is built on. The rest is the frozen
+# evaluation split.
 #
-# One constant, because two of them is what let screening leak into the
-# evaluation split: `screen_models` split at 400 while `run_arm` defaulted to
-# 200, and `parallel_split` shuffles once and slices, so `shuffled[200:400]` was
-# both screened on and scored on. Models were selected on 200 of the ~500 items
-# their results are reported over.
-#
-# Screening must fit inside it, which is what the assertion below enforces.
-ADAPTATION_SIZE = 400
+# One constant per task, because two of them is what let screening leak into
+# the evaluation split: `screen_models` split at 400 while `run_arm` defaulted
+# to 200, and the split was one shuffle sliced at that index, so
+# `shuffled[200:400]` was both screened on and scored on. Models were selected
+# on 200 of the ~500 items their results are reported over. Screening no longer
+# carries a size of its own at all -- it runs on the whole adaptation split,
+# so there is no second number left to disagree with the first.
 
-# Belebele is 4-option, so chance is 0.25. The screening rule is stated in terms
-# of the interval rather than the point estimate: at n=400 the Wilson halfwidth
-# near 0.35 is about 4.7 points, so an observed 35% is consistent with a true
-# 30%. Screen at SCREENING_N and require the lower bound to clear
-# SCREENING_FLOOR.
+# Belebele is split by PASSAGE, not by question: 412 of its 488 passages carry
+# two questions, and a question-level split hands the playbook one of a pair
+# and then scores it on the other. 100 of 488 passages leaves roughly 185
+# adaptation items and 715 evaluation items.
+BELEBELE_ADAPTATION_PASSAGES = 100
+
+# Global-MMLU has no passage to leak -- every `sample_id` is an independent
+# question -- so it is split by item.
+GLOBAL_MMLU_ADAPTATION_SIZE = 400
+
+# Both tasks are 4-option, so chance is 0.25. The screening rule is stated on
+# the interval rather than the point estimate, and the floor is what is
+# pre-registered; n is whatever the task's adaptation split holds.
+#
+# Note what the passage-level Belebele split costs here. At n=400 an observed
+# 34.8% cleared a 30% lower bound; at n=185 it takes 36.7%. The gate is
+# stricter on Belebele than it was, which is the honest price of not leaking
+# passages -- and Belebele is the negative control, while the primary task
+# screens at n=400.
 CHANCE_FLOOR = 0.25
-SCREENING_N = 400
 SCREENING_FLOOR = 0.30
-
-assert SCREENING_N <= ADAPTATION_SIZE, (
-    f"Screening at n={SCREENING_N} cannot fit inside an adaptation split of "
-    f"{ADAPTATION_SIZE}, so it would score items the study later reports on."
-)
 
 
 def screening_verdict(ci_low: float) -> bool:

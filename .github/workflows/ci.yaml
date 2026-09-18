@@ -31,6 +31,18 @@ jobs:
     - name: Verify the Belebele files are the parallel corpus we assume
       run: python -m scripts.fetch_belebele --check
 
+    # Global-MMLU is gitignored (~31 MB) and fetched here rather than skipped.
+    # Without it the en/ne option-order parity test -- the one guard standing
+    # between a text-seeded permutation and a silently unpaired comparison --
+    # skips, and a guard that never runs in CI is not a guard.
+    - name: Fetch and verify Global-MMLU
+      run: python -m scripts.fetch_global_mmlu
+
+    # The splits are committed; this confirms they still hash to their recorded
+    # checksums and still match the corpus they were drawn from.
+    - name: Verify the frozen splits
+      run: python -m scripts.freeze_splits --check
+
     - name: Run tests
       run: pytest tests/ -v --cov=edge_slm_ace --cov-report=term-missing
 
